@@ -125,7 +125,6 @@ function change(action) {
 
 function changed() {
   revision++;
-  $("draft-status").textContent = "保存中…";
   $("local-status").textContent = "下書きを保存中…";
   clearTimeout(saveTimer);
   saveTimer = setTimeout(persist, 400);
@@ -138,7 +137,6 @@ function persist() {
   // An unreadable draft is retained until the user explicitly starts over.
   // Editing/exporting may continue, but must never silently replace that draft.
   if (draftProtected) {
-    $("draft-status").textContent = "自動保存を停止中";
     $("local-status").textContent = "元の下書きを保護中";
     return Promise.resolve();
   }
@@ -153,15 +151,11 @@ function persist() {
       savedRevision = currentRevision;
       if (revision === currentRevision) {
         storageFailed = false;
-        $("draft-status").textContent = state.photos.length
-          ? "下書き保存済み"
-          : "";
-        $("local-status").textContent = "端末内に自動保存";
+        $("local-status").textContent = "下書き保存済み";
       }
     })
     .catch((error) => {
       console.warn("Draft save failed:", error.name, error.message);
-      $("draft-status").textContent = "下書き未保存";
       $("local-status").textContent = "下書きを保存できません";
       if (!storageFailed)
         showError(
@@ -261,8 +255,6 @@ function renderPhotos() {
       ),
     );
   $("photo-count").textContent = state.photos.length;
-  $("photo-empty").hidden = !!state.photos.length;
-  $("select-hint").hidden = !state.photos.length || !!selected;
   $("photo-controls").hidden = !selectedPhoto();
   document.querySelectorAll("[data-add]").forEach((button) => {
     button.disabled = !ready || importing || state.photos.length >= MAX_PHOTOS;
@@ -361,7 +353,6 @@ function renderLayouts() {
   $("mode-grid").setAttribute("aria-pressed", String(!free));
   $("mode-free").setAttribute("aria-pressed", String(free));
   $("grid-options").hidden = free;
-  $("free-hint").hidden = !free;
   $("grid-spacing").hidden = free;
   $("ratio-list")
     .querySelectorAll("button")
@@ -372,7 +363,6 @@ function renderLayouts() {
       ),
     );
   const ratio = RATIOS.find((r) => r[1] === state.ratio) || RATIOS[0];
-  $("ratio-name").textContent = ratio[2];
   $("canvas-ratio").textContent = ratio[0].replace(":", " : ");
 }
 
@@ -475,9 +465,6 @@ function renderFrameSize() {
       ? `${Math.round(value * 100)}%`
       : "—";
   }
-  $("frame-size-hint").textContent = free
-    ? "キャンバスに対する幅・高さ"
-    : "隣の枠も合わせて調整します";
   $("reset-frames").disabled = free
     ? !photo || photo.free.h == null
     : !state.frameLayout;
@@ -488,17 +475,7 @@ function renderUI() {
   const hasPhotos = !!state.photos.length;
   $("empty-state").hidden = hasPhotos;
   $("canvas-wrap").hidden = !hasPhotos;
-  $("canvas-label").textContent = hasPhotos
-    ? `${state.photos.length}枚のコラージュ`
-    : "プレビュー";
   $("deselect").hidden = !selected;
-  $("gesture-hint").textContent = !hasPhotos
-    ? "画像はこの端末内で編集されます"
-    : selected
-      ? state.mode === "free"
-        ? "ドラッグで移動 · 2本指で拡大・回転"
-        : "ドラッグで位置調整 · 2本指で拡大"
-      : "画像を選んで調整";
   updateHistory();
   renderPhotos();
   renderLayouts();
@@ -512,11 +489,6 @@ function select(id, openPanel = true) {
   renderPhotos();
   renderFrameSize();
   $("deselect").hidden = !id;
-  $("gesture-hint").textContent = id
-    ? state.mode === "free"
-      ? "ドラッグで移動 · 2本指で拡大・回転"
-      : "ドラッグで位置調整 · 2本指で拡大"
-    : "画像を選んで調整";
   drawSelection();
 }
 $("deselect").addEventListener("click", () => select(null, false));
@@ -753,7 +725,7 @@ $("background-input").addEventListener("change", async (event) => {
   const before = snapshot();
   importing = true;
   renderUI();
-  $("draft-status").textContent = "背景を読み込み中…";
+  $("local-status").textContent = "背景を読み込み中…";
   try {
     const asset = await importImage(file);
     const id = crypto.randomUUID();
@@ -764,7 +736,11 @@ $("background-input").addEventListener("change", async (event) => {
     showToast("背景画像を変更しました");
   } catch (error) {
     showError(error.message);
-    $("draft-status").textContent = storageFailed ? "下書き未保存" : "";
+    $("local-status").textContent = draftProtected
+      ? "元の下書きを保護中"
+      : storageFailed
+        ? "下書き未保存"
+        : "";
   } finally {
     event.target.value = "";
     importing = false;
@@ -1162,8 +1138,7 @@ async function addFiles(files) {
   const failures = [];
   let added = 0;
   for (const file of [...files].slice(0, available)) {
-    $("draft-status").textContent = `画像を読み込み中… ${++added}`;
-    $("local-status").textContent = "画像を読み込み中…";
+    $("local-status").textContent = `画像を読み込み中… ${++added}`;
     try {
       const asset = await importImage(file);
       const id = crypto.randomUUID();
@@ -1185,11 +1160,14 @@ async function addFiles(files) {
   setTab("photos");
   renderUI();
   const count = state.photos.length - before.photos.length;
-  if (count) showToast(`${count}枚の画像を追加しました`);
+  if (count) showToast(`${count}枚追加しました`);
   else if (draftProtected) persist();
   else {
-    $("draft-status").textContent = state.photos.length ? "下書き保存済み" : "";
-    $("local-status").textContent = "端末内に自動保存";
+    $("local-status").textContent = storageFailed
+      ? "下書き未保存"
+      : state.photos.length || state.backgroundImage
+        ? "下書き保存済み"
+        : "";
   }
   if (failures.length) showError(failures.join(" / "));
 }
@@ -1234,6 +1212,11 @@ document
     button.addEventListener("click", () => button.closest("dialog").close()),
   );
 $("help-open").addEventListener("click", () => $("help-dialog").showModal());
+$("save-help").addEventListener("click", () => {
+  $("help-saving").open = true;
+  $("help-dialog").showModal();
+  $("help-saving").scrollIntoView({ block: "start" });
+});
 $("new-collage").addEventListener("click", () => $("new-dialog").showModal());
 $("confirm-new").addEventListener("click", async () => {
   endGesture();
@@ -1388,7 +1371,7 @@ async function initialize() {
         assets = restored;
         state = checked.state;
         selected = null;
-        if (state.photos.length) showToast("前回の続きから編集できます");
+        if (state.photos.length) showToast("下書きを開きました");
       } catch (error) {
         for (const asset of restored.values()) URL.revokeObjectURL(asset.url);
         throw error;
@@ -1406,14 +1389,11 @@ async function initialize() {
     );
   }
   ready = true;
-  $("draft-status").textContent = storageFailed
-    ? "下書きを確認してください"
-    : state.photos.length
-      ? "下書き保存済み"
-      : "";
   $("local-status").textContent = storageFailed
     ? "下書きを確認してください"
-    : "端末内に自動保存";
+    : state.photos.length || state.backgroundImage
+      ? "下書き保存済み"
+      : "";
   renderUI();
 }
 initialize();

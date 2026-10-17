@@ -121,10 +121,6 @@ a {
   text-decoration: none;
   white-space: nowrap;
 }
-.draft-status {
-  font-size: 12px;
-  color: var(--muted);
-}
 .header-actions {
   margin-left: auto;
   display: flex;
@@ -224,12 +220,21 @@ a {
 }
 .canvas-meta {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+  min-height: 30px;
   font-size: 11px;
   letter-spacing: 0.06em;
   color: var(--muted);
   margin-bottom: 14px;
   user-select: none;
+}
+#canvas-ratio {
+  margin-left: auto;
+}
+.canvas-meta .text-button {
+  min-height: 30px;
+  font-size: 11px;
 }
 .preview-area {
   container: preview / size;
@@ -294,20 +299,6 @@ a {
   align-items: center;
   justify-content: center;
 }
-.workspace-footer {
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  margin-top: 12px;
-  font-size: 11px;
-  color: var(--muted);
-}
-.workspace-footer .text-button {
-  min-height: 30px;
-  font-size: 11px;
-}
 .empty-state {
   display: flex;
   align-items: center;
@@ -315,16 +306,6 @@ a {
   flex-direction: column;
   padding: 20px;
   text-align: center;
-}
-.empty-state p {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 16px;
-}
-.empty-state p span {
-  display: block;
-  font-size: 11px;
-  margin-top: 3px;
 }
 .empty-state .button {
   box-shadow: 0 5px 12px #70608b20;
@@ -533,13 +514,6 @@ a {
   align-items: center;
   justify-content: center;
 }
-.panel-empty {
-  color: var(--muted);
-  font-size: 12px;
-  text-align: center;
-  padding: 24px 4px;
-  line-height: 1.9;
-}
 .selected-heading {
   display: flex;
   justify-content: space-between;
@@ -547,6 +521,9 @@ a {
   border-top: 1px solid var(--line);
   margin-top: 18px;
   padding-top: 12px;
+}
+.photo-heading {
+  justify-content: flex-end;
 }
 .selected-heading strong {
   font-size: 13px;
@@ -659,7 +636,7 @@ input[type="range"]::-moz-range-thumb {
 }
 .segmented {
   display: grid;
-  grid-template-columns: 1.3fr 1fr;
+  grid-template-columns: 1fr 1fr;
   background: #f2eff5;
   border-radius: 10px;
   padding: 4px;
@@ -820,6 +797,7 @@ dialog::backdrop {
 }
 .dialog-heading h2 {
   font-size: 18px;
+  margin-right: auto;
 }
 .dialog-heading .icon-button {
   margin: -6px -8px -6px 0;
@@ -876,17 +854,25 @@ select {
   gap: 8px;
   margin-top: 18px;
 }
-.save-hint {
-  font-size: 11px;
-  color: var(--muted);
-  text-align: center;
-  margin-top: 12px;
-  line-height: 1.8;
-}
 .inline-error {
   font-size: 12px;
   color: #a63f56;
   margin-top: 12px;
+}
+#help-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+#help-dialog .dialog-heading {
+  flex-shrink: 0;
+}
+.help-content {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.help-content details {
+  font-size: 13px;
 }
 .help-steps {
   padding-left: 22px;
@@ -905,7 +891,7 @@ select {
 }
 .help-steps span {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.85;
   color: var(--muted);
 }
@@ -952,7 +938,7 @@ details p {
 .frame-size-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 8px;
   font-size: 11px;
 }
@@ -1161,9 +1147,6 @@ input:disabled {
     width: 25px;
     height: 25px;
   }
-  .draft-status {
-    display: none;
-  }
   .header-actions {
     gap: 4px;
   }
@@ -1190,20 +1173,15 @@ input:disabled {
     grid-template-rows: minmax(220px, 1fr) 352px;
   }
   .workspace {
-    padding: 10px 18px 0;
+    padding: 10px 18px 12px;
     min-height: 0;
   }
   .canvas-meta {
     margin-bottom: 7px;
     font-size: 10px;
+    min-height: 26px;
   }
-  .workspace-footer {
-    height: 27px;
-    margin-top: 5px;
-    font-size: 10px;
-    gap: 5px;
-  }
-  .workspace-footer .text-button {
+  .canvas-meta .text-button {
     font-size: 10px;
     min-height: 26px;
   }
@@ -1316,9 +1294,6 @@ input:disabled {
   .photo-order .icon-button {
     height: 34px;
   }
-  .panel-empty {
-    padding: 18px 4px;
-  }
   .segmented {
     margin-bottom: 8px;
     padding: 3px;
@@ -1373,14 +1348,6 @@ input:disabled {
   }
   .empty-state {
     padding: 2px;
-  }
-  .empty-state p {
-    margin-top: 10px;
-    font-size: 11px;
-  }
-  .empty-state p span {
-    display: inline;
-    margin-left: 10px;
   }
   .empty-state .button {
     min-height: 43px;
@@ -1443,7 +1410,7 @@ input:disabled {
   }
 }
 /* Safari's toolbars change the available preview height. Shrink only the
-   illustration, keeping the add button and both text lines at readable sizes. */
+   illustration so the add button stays inside the preview. */
 @container preview (max-height: 260px) {
   .empty-state {
     padding: 2px;

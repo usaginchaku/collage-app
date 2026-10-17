@@ -247,7 +247,7 @@ for (const failure of ["invalid state", "temporary storage failure"])
     await start(page);
     await page.locator("#file-input").setInputFiles(fixtures[0]);
     await expect(page.locator("#photo-count")).toHaveText("1");
-    await expect(page.locator("#local-status")).toHaveText("端末内に自動保存");
+    await expect(page.locator("#local-status")).toHaveText("下書き保存済み");
     const originalRatio = failure === "invalid state" ? 0 : 0.8;
     await storedRatio(page, originalRatio);
     if (failure === "temporary storage failure")
@@ -273,6 +273,6 @@ for (const failure of ["invalid state", "temporary storage failure"])
     await page.locator("#confirm-new").click();
     await page.locator("#file-input").setInputFiles(fixtures[0]);
     await expect(page.locator("#photo-count")).toHaveText("1");
-    await expect(page.locator("#local-status")).toHaveText("端末内に自動保存");
+    await expect(page.locator("#local-status")).toHaveText("下書き保存済み");
     expect(await storedRatio(page)).toBe(1);
   });

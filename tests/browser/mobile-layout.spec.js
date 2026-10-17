@@ -17,13 +17,11 @@ async function emptyBounds(page) {
       empty: box("#empty-state"),
       art: box(".art-front"),
       button: box("#empty-state button"),
-      copy: box("#empty-state p"),
-      footer: box(".workspace-footer"),
     };
   });
 }
 
-test("empty-screen illustration and text fit during phone height and orientation changes", async ({
+test("empty-screen illustration and add button fit during phone height and orientation changes", async ({
   page,
 }, info) => {
   await page.goto("./");
@@ -49,12 +47,11 @@ test("empty-screen illustration and text fit during phone height and orientation
       .toBe(true);
     const b = await emptyBounds(page);
     expect(b.art.bottom).toBeLessThanOrEqual(b.button.top + 1);
-    expect(b.button.bottom + 5).toBeLessThanOrEqual(b.copy.top);
-    expect(b.copy.bottom + 4).toBeLessThanOrEqual(b.footer.top);
+    expect(b.button.bottom).toBeLessThanOrEqual(b.area.bottom);
     for (const tab of ["レイアウト", "フレーム", "画像 0"]) {
       await page.getByRole("tab", { name: tab, exact: true }).click();
       const after = await emptyBounds(page);
-      expect(after.copy.bottom + 4).toBeLessThanOrEqual(after.footer.top);
+      expect(after.button.bottom).toBeLessThanOrEqual(after.area.bottom);
     }
   }
   await page.screenshot({
@@ -67,5 +64,54 @@ test("empty-screen illustration and text fit during phone height and orientation
   await page.locator("#remove-photo").click();
   await expect(page.locator("#empty-state")).toBeVisible();
   const restored = await emptyBounds(page);
-  expect(restored.copy.bottom + 4).toBeLessThanOrEqual(restored.footer.top);
+  expect(restored.button.bottom).toBeLessThanOrEqual(restored.area.bottom);
+});
+
+test("help stays readable and returns to the export without losing the image", async ({
+  page,
+}, info) => {
+  await page.goto("./");
+  // Focus restoration applies when the dialog was opened from the keyboard.
+  await page.locator("#help-open").focus();
+  await page.locator("#help-open").press("Enter");
+  const help = page.locator("#help-dialog");
+  const close = help.getByRole("button", { name: "閉じる", exact: true });
+  for (const size of [
+    { width: 390, height: 664 },
+    { width: 320, height: 568 },
+  ]) {
+    await page.setViewportSize(size);
+    for (const detail of await help.locator("details").all()) {
+      if (!(await detail.evaluate((el) => el.open)))
+        await detail.locator("summary").click();
+      await detail.locator("p").last().scrollIntoViewIfNeeded();
+      await expect(close).toBeInViewport();
+      await expect(detail.locator("p").last()).toBeInViewport();
+      expect(
+        await help.evaluate((el) => el.scrollWidth <= el.clientWidth),
+      ).toBe(true);
+    }
+  }
+  await close.click();
+  await expect(page.locator("#help-open")).toBeFocused();
+  await page.locator("#file-input").setInputFiles(fixtures[0]);
+  await page.locator("#export-open").click();
+  await expect(page.locator("#download")).toBeEnabled();
+  const imageBefore = await page.locator("#export-image").getAttribute("src");
+  await page.locator("#save-help").focus();
+  await page.locator("#save-help").press("Enter");
+  await expect(help).toBeVisible();
+  await expect(page.locator("#help-saving summary")).toBeInViewport();
+  await expect(page.locator("#help-saving p").last()).toBeInViewport();
+  await page.screenshot({
+    path: info.outputPath("save-help.png"),
+    scale: "css",
+  });
+  await close.click();
+  await expect(page.locator("#save-help")).toBeFocused();
+  await expect(page.locator("#download")).toBeEnabled();
+  await expect(page.locator("#export-image")).toHaveAttribute(
+    "src",
+    imageBefore,
+  );
 });

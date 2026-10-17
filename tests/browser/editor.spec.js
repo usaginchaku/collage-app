@@ -13,7 +13,7 @@ async function range(page, id, value) {
   await page.locator(`#${id}`).dispatchEvent("change");
 }
 async function draft(page) {
-  await expect(page.locator("#local-status")).toHaveText("端末内に自動保存");
+  await expect(page.locator("#local-status")).toHaveText("下書き保存済み");
   return page.evaluate(
     () =>
       new Promise((resolve, reject) => {
