@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#f6f4f1" />
+    <meta
+      name="description"
+      content="画像を選んで、自由に並べて、1枚に。無料・透かしなしのシンプルなコラージュアプリ。画像は端末内で処理します。"
+    />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'"
+    />
+    <title>ならべる — 画像コラージュ</title>
+    <link rel="icon" href="./assets/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./src/style.css" />
+    <script type="module" src="./src/app.js"></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <a class="brand" href="./" aria-label="ならべる ホーム"
+        ><img src="./assets/icon.svg" width="29" height="29" alt="" /><span
+          >ならべる</span
+        ></a
+      >
+      <span id="draft-status" class="draft-status" role="status">準備中…</span>
+      <div class="header-actions">
+        <div class="history-actions">
+          <button
+            id="undo"
+            class="icon-button"
+            aria-label="元に戻す"
+            title="元に戻す (Ctrl / ⌘ + Z)"
+            disabled
+          >
+            <i data-icon="undo"></i>
+          </button>
+          <button
+            id="redo"
+            class="icon-button"
+            aria-label="やり直す"
+            title="やり直す (Ctrl / ⌘ + Shift + Z)"
+            disabled
+          >
+            <i data-icon="redo"></i>
+          </button>
+        </div>
+        <button id="export-open" class="button primary compact" disabled>
+          <i data-icon="download"></i>保存
+        </button>
+        <button
+          id="help-open"
+          class="icon-button"
+          aria-label="使い方"
+          title="使い方"
+        >
+          <i data-icon="help"></i>
+        </button>
+      </div>
+    </header>
+
+    <main class="workbench" aria-label="コラージュ編集">
+      <section class="workspace" aria-label="プレビュー">
+        <div class="canvas-meta">
+          <span id="canvas-label">プレビュー</span
+          ><span id="canvas-ratio">1 : 1</span>
+        </div>
+        <div id="preview-area" class="preview-area">
+          <div id="empty-state" class="empty-state">
+            <div class="empty-art" aria-hidden="true">
+              <div class="art-card art-back"><span></span></div>
+              <div class="art-card art-front">
+                <div></div>
+                <span></span><span></span>
+              </div>
+            </div>
+            <button class="button primary" data-add>
+              <i data-icon="plus"></i>画像を追加
+            </button>
+            <p>または、ここにドロップ<span>12枚まで</span></p>
+          </div>
+          <div id="canvas-wrap" class="canvas-wrap" hidden>
+            <canvas
+              id="collage"
+              aria-label="コラージュのプレビュー。画像を選び、ドラッグで位置を調整できます。"
+              tabindex="0"
+            ></canvas>
+            <div id="selection" class="selection" hidden aria-hidden="true">
+              <span id="selection-number"></span>
+            </div>
+          </div>
+        </div>
+        <div class="workspace-footer">
+          <span id="gesture-hint">画像はこの端末内で編集されます</span
+          ><button id="deselect" class="text-button" hidden>選択解除</button>
+        </div>
+        <div id="drop-overlay" class="drop-overlay" hidden>
+          <i data-icon="plus"></i>ドロップして画像を追加
+        </div>
+      </section>
+
+      <aside class="inspector" aria-label="編集ツール">
+        <nav class="tabs" role="tablist" aria-label="編集項目">
+          <button
+            id="tab-photos"
+            role="tab"
+            aria-controls="panel-photos"
+            aria-selected="true"
+            data-tab="photos"
+          >
+            <i data-icon="images"></i><span>画像</span
+            ><span id="photo-count" class="count">0</span>
+          </button>
+          <button
+            id="tab-layout"
+            role="tab"
+            aria-controls="panel-layout"
+            aria-selected="false"
+            tabindex="-1"
+            data-tab="layout"
+          >
+            <i data-icon="layout"></i><span>レイアウト</span>
+          </button>
+          <button
+            id="tab-frame"
+            role="tab"
+            aria-controls="panel-frame"
+            aria-selected="false"
+            tabindex="-1"
+            data-tab="frame"
+          >
+            <i data-icon="frame"></i><span>フレーム</span>
+          </button>
+        </nav>
+        <div class="panels">
+          <section
+            id="panel-photos"
+            role="tabpanel"
+            aria-labelledby="tab-photos"
+            class="panel"
+          >
+            <div class="section-heading">
+              <h1>画像</h1>
+              <button class="text-button" data-add>
+                <i data-icon="plus"></i>追加
+              </button>
+            </div>
+            <div
+              id="photo-list"
+              class="photo-list"
+              aria-label="追加した画像"
+            ></div>
+            <p id="photo-empty" class="panel-empty">
+              並べたい画像を選んでください。<br />JPEG・PNG・WebPなどに対応。
+            </p>
+            <div id="photo-controls" hidden>
+              <div class="selected-heading">
+                <strong id="selected-label">画像 1</strong
+                ><button id="reset-photo" class="text-button subtle">
+                  調整をリセット
+                </button>
+              </div>
+              <div class="control-row slider-row">
+                <label for="photo-zoom" id="zoom-label">拡大</label
+                ><input
+                  id="photo-zoom"
+                  type="range"
+                  min="1"
+                  max="3"
+                  step="0.01"
+                  value="1"
+                /><output id="zoom-value" for="photo-zoom">100%</output>
+              </div>
+              <div id="free-rotation-row" class="control-row slider-row" hidden>
+                <label for="photo-angle">角度</label
+                ><input
+                  id="photo-angle"
+                  type="range"
+                  min="-180"
+                  max="180"
+                  step="1"
+                  value="0"
+                /><output id="angle-value" for="photo-angle">0°</output>
+              </div>
+              <div class="photo-tools">
+                <button id="rotate-photo" class="tool-button">
+                  <i data-icon="rotate"></i><span>回転</span>
+                </button>
+                <button
+                  id="flip-photo"
+                  class="tool-button"
+                  aria-pressed="false"
+                >
+                  <i data-icon="flip"></i><span>反転</span>
+                </button>
+                <button id="fit-photo" class="tool-button" aria-pressed="false">
+                  <i data-icon="fit"></i><span>全体を表示</span>
+                </button>
+                <button id="center-photo" class="tool-button">
+                  <i data-icon="center"></i><span>中央に戻す</span>
+                </button>
+              </div>
+              <div class="photo-order">
+                <span id="order-label">並び順</span
+                ><button
+                  id="move-back"
+                  class="icon-button"
+                  aria-label="画像を前の枠へ移動"
+                  title="前の枠へ"
+                >
+                  <i data-icon="left"></i></button
+                ><button
+                  id="move-forward"
+                  class="icon-button"
+                  aria-label="画像を次の枠へ移動"
+                  title="次の枠へ"
+                >
+                  <i data-icon="right"></i></button
+                ><button id="remove-photo" class="text-button danger">
+                  <i data-icon="trash"></i>削除
+                </button>
+              </div>
+            </div>
+            <p id="select-hint" class="panel-empty" hidden>
+              画像を選ぶと、位置や大きさを調整できます。
+            </p>
+          </section>
+
+          <section
+            id="panel-layout"
+            role="tabpanel"
+            aria-labelledby="tab-layout"
+            class="panel"
+            hidden
+          >
+            <div class="segmented" aria-label="配置方法">
+              <button id="mode-grid" aria-pressed="true">
+                レイアウトに並べる</button
+              ><button id="mode-free" aria-pressed="false">自由に並べる</button>
+            </div>
+            <div class="section-heading">
+              <h2>縦横比</h2>
+              <span id="ratio-name" class="muted">正方形</span>
+            </div>
+            <div id="ratio-list" class="ratio-list" aria-label="縦横比"></div>
+            <div id="grid-options">
+              <div class="section-heading">
+                <h2>レイアウト</h2>
+                <span id="layout-count" class="muted"></span>
+              </div>
+              <div
+                id="layout-list"
+                class="layout-list"
+                aria-label="レイアウトを選択"
+              ></div>
+              <div id="split-row" class="control-row slider-row" hidden>
+                <label for="split">分割位置</label
+                ><input
+                  id="split"
+                  type="range"
+                  min="30"
+                  max="75"
+                  step="1"
+                  value="60"
+                /><output id="split-value" for="split">60%</output>
+              </div>
+            </div>
+            <p id="free-hint" class="panel-empty" hidden>
+              画像をドラッグして好きな場所へ。<br />2本指で大きさと角度を変えられます。
+            </p>
+          </section>
+
+          <section
+            id="panel-frame"
+            role="tabpanel"
+            aria-labelledby="tab-frame"
+            class="panel"
+            hidden
+          >
+            <div class="section-heading"><h2>余白と角丸</h2></div>
+            <div id="grid-spacing">
+              <div class="control-row slider-row">
+                <label for="gap">画像の間隔</label
+                ><input
+                  id="gap"
+                  type="range"
+                  min="0"
+                  max="6"
+                  step="0.2"
+                  value="1.2"
+                /><output id="gap-value" for="gap">1.2</output>
+              </div>
+              <div class="control-row slider-row">
+                <label for="margin">外側の余白</label
+                ><input
+                  id="margin"
+                  type="range"
+                  min="0"
+                  max="10"
+                  step="0.2"
+                  value="2.4"
+                /><output id="margin-value" for="margin">2.4</output>
+              </div>
+            </div>
+            <div class="control-row slider-row">
+              <label for="radius">角丸</label
+              ><input
+                id="radius"
+                type="range"
+                min="0"
+                max="12"
+                step="0.5"
+                value="0"
+              /><output id="radius-value" for="radius">0</output>
+            </div>
+            <div class="section-heading background-heading">
+              <h2>背景色</h2>
+              <label class="custom-color"
+                ><span>好きな色</span
+                ><input
+                  id="background-color"
+                  type="color"
+                  value="#ffffff"
+                  aria-label="背景色を選ぶ"
+              /></label>
+            </div>
+            <div id="color-list" class="color-list" aria-label="背景色"></div>
+          </section>
+        </div>
+        <div class="inspector-footer">
+          <button id="new-collage" class="text-button subtle" disabled>
+            <i data-icon="new"></i>新しく作る</button
+          ><span id="local-status">端末内に自動保存</span>
+        </div>
+      </aside>
+    </main>
+    <input
+      id="file-input"
+      type="file"
+      accept="image/*,.heic,.heif"
+      multiple
+      hidden
+    />
+    <div id="toast" class="toast" role="status" hidden></div>
+    <div id="error-banner" class="error-banner" role="alert" hidden>
+      <span></span
+      ><button class="icon-button" aria-label="メッセージを閉じる">
+        <i data-icon="close"></i>
+      </button>
+    </div>
+
+    <dialog id="export-dialog" aria-labelledby="export-title">
+      <div class="dialog-heading">
+        <h2 id="export-title">画像を保存</h2>
+        <button class="icon-button" data-close aria-label="閉じる">
+          <i data-icon="close"></i>
+        </button>
+      </div>
+      <div class="export-settings">
+        <label
+          >形式<select id="export-format">
+            <option value="image/png">PNG</option>
+            <option value="image/jpeg">JPEG</option>
+          </select></label
+        >
+        <label
+          >長い辺<select id="export-size">
+            <option value="1080">1080 px</option>
+            <option value="2048" selected>2048 px</option>
+            <option value="4096">4096 px</option>
+          </select></label
+        >
+      </div>
+      <p id="export-info" class="export-info"></p>
+      <div id="export-preview" class="export-preview">
+        <img id="export-image" alt="保存するコラージュ" />
+      </div>
+      <p id="export-error" class="inline-error" role="alert" hidden></p>
+      <div class="export-actions">
+        <button id="download" class="button primary" disabled>
+          <i data-icon="download"></i>ダウンロード</button
+        ><button id="share" class="button secondary" disabled>
+          <i data-icon="share"></i>共有・写真に保存
+        </button>
+      </div>
+      <p class="save-hint">
+        スマホでは共有メニューから保存できます。<br />保存できないときは、上の画像を長押ししてください。
+      </p>
+    </dialog>
+
+    <dialog id="help-dialog" aria-labelledby="help-title">
+      <div class="dialog-heading">
+        <h2 id="help-title">ならべる の使い方</h2>
+        <button class="icon-button" data-close aria-label="閉じる">
+          <i data-icon="close"></i>
+        </button>
+      </div>
+      <ol class="help-steps">
+        <li>
+          <strong>画像を追加</strong
+          ><span>端末から最大12枚。PCではドラッグ＆ドロップも使えます。</span>
+        </li>
+        <li>
+          <strong>並べ方を選ぶ</strong
+          ><span
+            >「レイアウト」で縦横比と配置を選択。「自由に並べる」なら好きな位置に重ねられます。</span
+          >
+        </li>
+        <li>
+          <strong>画像を調整</strong
+          ><span
+            >画像を選び、ドラッグで位置を調整。2本指やスライダーで拡大できます。自由配置では2本指で回転もできます。</span
+          >
+        </li>
+        <li>
+          <strong>1枚の画像に保存</strong
+          ><span>右上の「保存」からPNG・JPEGで出力。透かしは入りません。</span>
+        </li>
+      </ol>
+      <details>
+        <summary>下書き・プライバシー</summary>
+        <p>
+          画像はサーバーに送らず、このブラウザ内だけで処理します。広告・アクセス解析・ログインはありません。編集途中はこの端末のブラウザに自動保存され、次回続きから編集できます。
+        </p>
+        <p>
+          プライベートブラウズ、容量不足、ブラウザのデータ削除などで下書きが失われることがあります。大切な完成画像はダウンロードしてください。「新しく作る」でこのアプリの下書きを消去できます。
+        </p>
+      </details>
+      <details>
+        <summary>画像形式・画質について</summary>
+        <p>
+          JPEG・PNG・WebPなど、使用中のブラウザで開ける画像に対応します。HEIC /
+          HEIFはブラウザによって読み込めないため、その場合はJPEG・PNGに変換してください。アニメーションは静止画として取り込みます。
+        </p>
+        <p>
+          安定した動作のため、読込画像は1枚あたり長辺4096px・800万画素以内、合計4000万画素以内に調整します。出力は長辺4096pxまで。元画像のファイルは変更しません。透明背景はPNGに対応し、JPEGでは白になります。
+        </p>
+      </details>
+      <details>
+        <summary>キーボード操作</summary>
+        <p>
+          Ctrl / ⌘ +
+          Zで元に戻す、Shiftを加えるとやり直し。プレビューにフォーカス中は矢印キーで選択画像を移動できます。Shift
+          +
+          矢印で大きく移動。画像タブのボタンからすべての画像を選択・調整できます。
+        </p>
+      </details>
+    </dialog>
+
+    <dialog id="new-dialog" aria-labelledby="new-title">
+      <div class="dialog-heading">
+        <h2 id="new-title">新しく作りますか？</h2>
+        <button class="icon-button" data-close aria-label="閉じる">
+          <i data-icon="close"></i>
+        </button>
+      </div>
+      <p>
+        いまの画像と下書きが消去されます。残したいコラージュは先に画像として保存してください。
+      </p>
+      <div class="confirm-actions">
+        <button class="button secondary" data-close>戻る</button
+        ><button id="confirm-new" class="button primary">新しく作る</button>
+      </div>
+    </dialog>
+    <noscript
+      ><p class="noscript">
+        このアプリを使うにはJavaScriptを有効にしてください。
+      </p></noscript
+    >
+  </body>
+</html>
