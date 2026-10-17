@@ -2,6 +2,15 @@
 
 検証日: 2026-10-17
 
+## v1.1.2 スマホ初期画面の重なり修正
+
+- iPhone 14 / Safariで初期画面中央の文字が重なるという報告を調査。修正前のWebKitで、固定高の初期イラストを含む領域が約225pxに対し、プレビューの実高さが188pxまたは156pxとなり、ドロップ案内と端末内編集の案内が重なることを再現。
+- プレビューを高さのコンテナクエリー対象にし、狭い場合は装飾イラストだけを段階的に縮小。文字・追加ボタンは縮小・非表示にせず、イラストの変形原点も修正。端末の向きによる自動文字拡大を抑えるが、ページのピンチ拡大は禁止しない。
+- 新規回帰テストは修正前に失敗、修正後に3構成で成功。390×844 / 664 / 600 / 550、320×568、844×390を順に切り替え、案内全体がプレビュー内に収まり、イラスト・ボタン・各テキストが交差しないことを寸法で検証。空のまま各タブを切り替える場合と、画像追加・最後の画像削除後も確認。
+- 全ブラウザテスト61件成功、CDP対象外2件スキップ（57.5秒）。構文・セキュリティ設定・差分のチェックも成功。
+- Windows上のWebKitとChromiumによるエミュレーション。iPhone 14実機のSafari自体は未確認。公開中の利用者の下書きには触れていない。
+- CSS仕様の参照: [Container queries](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Containment/Container_queries)、[text-size-adjust](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/text-size-adjust)。
+
 ## v1.1.1 セキュリティ強化
 
 - `npm run check`、`npm run security:check`、`git diff --check`: 成功。配信11ファイルで検査対象の秘密情報・ローカルパスのパターン一致なし。
