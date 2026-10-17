@@ -9,6 +9,7 @@
 - `npm run test:browser`: 28件成功、2件は適用対象外。Desktop Chromium、iPhone 14相当Chromium、iPhone 14相当WebKit。
 - 2本指のCDP入力テストはモバイルChromiumでのみ実施（残り2構成をスキップ）。WebKitではドラッグとスライダーによる移動・拡大・回転を検証。
 - UI調整後、関連するPC・スマホ・WebKitの6件を再実行して成功。
+- 自由配置中の画像追加を含む関連3件も再実行して成功。
 
 ### 確認内容
 
@@ -37,4 +38,8 @@ WebKitのBlob保存失敗を小さなIndexedDBテストで再現し、ArrayBuffe
 
 ## 公開後
 
-公開URLの配信確認と操作検証結果は、公開完了後に追記する。
+- 公開URL: https://usaginchaku.github.io/collage-app/
+- GitHub PagesのHTTPS公開が成功。公開したアプリのコミット: `2a53e387e36ac741f3b563f94d4c40b5325c35eb`。
+- HTML、CSS、JavaScript 4ファイル、アイコンの合計7ファイルについて、HTTP 200とローカル版とのSHA-256一致を確認。
+- 公開URLを対象に全ブラウザテストを再実行: 28件成功、対象外の2件スキップ（27.1秒）。実際のPNG / JPEGダウンロードと下書き保存・復元まで成功。
+- アプリ内ブラウザでも公開URLの初期画面を確認。
