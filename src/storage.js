@@ -24,6 +24,11 @@ function openDB() {
         connection = null;
         reject(new Error("下書き保存が他のタブでブロックされています。"));
       };
+    }).catch((error) => {
+      // indexedDB.open may throw synchronously (for example when storage is
+      // temporarily unavailable). Do not cache that rejected connection.
+      connection = null;
+      throw error;
     });
   return connection;
 }

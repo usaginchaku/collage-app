@@ -206,22 +206,25 @@ test("embedded editor stops before opening storage even without frame response h
   );
 });
 
-async function storedRatio(page, corrupt = false) {
+async function storedRatio(page, replacement = null) {
   return page.evaluate(
-    (corrupt) =>
+    (replacement) =>
       new Promise((resolve, reject) => {
         const open = indexedDB.open("naraberu-collage", 1);
         open.onerror = reject;
         open.onsuccess = () => {
           const db = open.result,
-            tx = db.transaction("draft", corrupt ? "readwrite" : "readonly"),
+            tx = db.transaction(
+              "draft",
+              replacement !== null ? "readwrite" : "readonly",
+            ),
             store = tx.objectStore("draft");
           const get = store.get("current");
           let ratio;
           get.onsuccess = () => {
             const saved = get.result;
-            if (corrupt) {
-              saved.state.ratio = 0;
+            if (replacement !== null) {
+              saved.state.ratio = replacement;
               store.put(saved, "current");
             }
             ratio = saved.state.ratio;
@@ -233,35 +236,43 @@ async function storedRatio(page, corrupt = false) {
           tx.onerror = reject;
         };
       }),
-    corrupt,
+    replacement,
   );
 }
 
-test("invalid saved state is preserved while editing and export remain usable", async ({
-  page,
-}) => {
-  await start(page);
-  await page.locator("#file-input").setInputFiles(fixtures[0]);
-  await expect(page.locator("#photo-count")).toHaveText("1");
-  await expect(page.locator("#local-status")).toHaveText("端末内に自動保存");
-  await storedRatio(page, true);
-  await page.reload();
-  await expect(page.locator("#error-banner")).toContainText(
-    "元のデータを残して",
-  );
-  await page.locator("#file-input").setInputFiles(fixtures[1]);
-  await expect(page.locator("#photo-count")).toHaveText("1");
-  await expect(page.locator("#local-status")).toContainText(
-    "元の下書きを保護中",
-  );
-  await page.locator("#export-open").click();
-  await expect(page.locator("#download")).toBeEnabled();
-  expect(await storedRatio(page)).toBe(0);
-  await page.locator("#export-dialog [data-close]").click();
-  await page.locator("#new-collage").click();
-  await page.locator("#confirm-new").click();
-  await page.locator("#file-input").setInputFiles(fixtures[0]);
-  await expect(page.locator("#photo-count")).toHaveText("1");
-  await expect(page.locator("#local-status")).toHaveText("端末内に自動保存");
-  expect(await storedRatio(page)).toBe(1);
-});
+for (const failure of ["invalid state", "temporary storage failure"])
+  test(`${failure} preserves the original draft while editing and export remain usable`, async ({
+    page,
+  }) => {
+    await start(page);
+    await page.locator("#file-input").setInputFiles(fixtures[0]);
+    await expect(page.locator("#photo-count")).toHaveText("1");
+    await expect(page.locator("#local-status")).toHaveText("端末内に自動保存");
+    const originalRatio = failure === "invalid state" ? 0 : 0.8;
+    await storedRatio(page, originalRatio);
+    if (failure === "temporary storage failure")
+      await page.addInitScript(() => {
+        const original = IDBFactory.prototype.open;
+        IDBFactory.prototype.open = function () {
+          IDBFactory.prototype.open = original;
+          throw new Error("Temporary storage read failure");
+        };
+      });
+    await page.reload();
+    await expect(page.locator("#error-banner")).toContainText("自動保存を停止");
+    await page.locator("#file-input").setInputFiles(fixtures[1]);
+    await expect(page.locator("#photo-count")).toHaveText("1");
+    await expect(page.locator("#local-status")).toContainText(
+      "元の下書きを保護中",
+    );
+    await page.locator("#export-open").click();
+    await expect(page.locator("#download")).toBeEnabled();
+    expect(await storedRatio(page)).toBe(originalRatio);
+    await page.locator("#export-dialog [data-close]").click();
+    await page.locator("#new-collage").click();
+    await page.locator("#confirm-new").click();
+    await page.locator("#file-input").setInputFiles(fixtures[0]);
+    await expect(page.locator("#photo-count")).toHaveText("1");
+    await expect(page.locator("#local-status")).toHaveText("端末内に自動保存");
+    expect(await storedRatio(page)).toBe(1);
+  });

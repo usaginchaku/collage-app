@@ -1396,11 +1396,13 @@ async function initialize() {
     }
   } catch {
     storageFailed = true;
-    draftProtected = draft != null;
+    // A failed read does not establish that storage is empty. Preserve any
+    // existing draft even if the browser recovers before the next write.
+    draftProtected = true;
     showError(
-      draftProtected
+      draft != null
         ? "下書きを安全に読み込めないため、元のデータを残して自動保存を停止しました。編集した完成画像はダウンロードできます。下書きを破棄して再開する場合は「新しく作る」を選んでください。"
-        : "下書きを読み込めませんでした。新しく編集できますが、完成画像はページを閉じる前に保存してください。",
+        : "下書きを確認できないため、自動保存を停止しました。元のデータは変更しません。完成画像はダウンロードできます。下書きを破棄して再開する場合は「新しく作る」を選んでください。",
     );
   }
   ready = true;
