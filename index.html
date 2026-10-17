@@ -7,18 +7,19 @@
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
     <meta name="theme-color" content="#f6f4f1" />
+    <meta name="referrer" content="no-referrer" />
     <meta
       name="description"
       content="画像を選んで、自由に並べて、1枚に。無料・透かしなしのシンプルなコラージュアプリ。画像は端末内で処理します。"
     />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'"
+      content="default-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; worker-src 'none'"
     />
     <title>ならべる — 画像コラージュ</title>
     <link rel="icon" href="./assets/icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./src/style.css" />
-    <script type="module" src="./src/app.js"></script>
+    <script type="module" src="./src/bootstrap.js"></script>
   </head>
   <body>
     <header class="app-header">
@@ -78,7 +79,7 @@
                 <span></span><span></span>
               </div>
             </div>
-            <button class="button primary" data-add>
+            <button class="button primary" data-add disabled>
               <i data-icon="plus"></i>画像を追加
             </button>
             <p>または、ここにドロップ<span>12枚まで</span></p>
@@ -145,7 +146,7 @@
           >
             <div class="section-heading">
               <h1>画像</h1>
-              <button class="text-button" data-add>
+              <button class="text-button" data-add disabled>
                 <i data-icon="plus"></i>追加
               </button>
             </div>

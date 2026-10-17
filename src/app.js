@@ -11,7 +11,6 @@ import {
   getCells,
   frameResizeInfo,
   resizeFrame,
-  restoreState,
 } from "./layouts.js";
 import {
   renderCollage,
@@ -21,6 +20,8 @@ import {
   arrangeFree,
 } from "./render.js";
 import { loadDraft, saveDraft, assetIds } from "./storage.js";
+import { validateDraft } from "./draft-validation.js";
+import { inspectImage, checkDimensions } from "./image-input.js";
 
 const $ = (id) => document.getElementById(id);
 const icons = {
@@ -65,6 +66,7 @@ let saveQueue = Promise.resolve();
 let revision = 0;
 let savedRevision = 0;
 let storageFailed = false;
+let draftProtected = false;
 let toastTimer;
 let sliderSnapshot = null;
 let exportBlob = null;
@@ -133,6 +135,13 @@ function changed() {
 
 function persist() {
   clearTimeout(saveTimer);
+  // An unreadable draft is retained until the user explicitly starts over.
+  // Editing/exporting may continue, but must never silently replace that draft.
+  if (draftProtected) {
+    $("draft-status").textContent = "自動保存を停止中";
+    $("local-status").textContent = "元の下書きを保護中";
+    return Promise.resolve();
+  }
   const currentRevision = revision;
   const currentState = snapshot();
   const currentAssets = new Map(assets);
@@ -168,7 +177,8 @@ function updateHistory() {
   $("redo").disabled = !redoStack.length || importing;
   $("export-open").disabled = !state.photos.length || importing;
   $("new-collage").disabled =
-    (!state.photos.length && !state.backgroundImage) || importing;
+    (!state.photos.length && !state.backgroundImage && !draftProtected) ||
+    importing;
 }
 
 function history(direction) {
@@ -305,7 +315,36 @@ function renderLayouts() {
     const width = state.ratio >= 1 ? 100 : 100 * state.ratio;
     const height = state.ratio >= 1 ? 100 / state.ratio : 100;
     const cells = layout.id === current.id ? getCells(state) : layout.cells;
-    button.innerHTML = `<svg viewBox="0 0 100 100" aria-hidden="true"><svg x="${(100 - width) / 2}" y="${(100 - height) / 2}" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-layout-preview>${cells.map((c) => `<rect x="${c.x * width + 1}" y="${c.y * height + 1}" width="${Math.max(0.5, c.w * width - 2)}" height="${Math.max(0.5, c.h * height - 2)}" rx="1"/>`).join("")}</svg></svg>`;
+    const svgNode = (name, attributes) => {
+      const node = document.createElementNS("http://www.w3.org/2000/svg", name);
+      for (const [key, value] of Object.entries(attributes))
+        node.setAttribute(key, String(value));
+      return node;
+    };
+    const svg = svgNode("svg", {
+      viewBox: "0 0 100 100",
+      "aria-hidden": "true",
+    });
+    const preview = svgNode("svg", {
+      x: (100 - width) / 2,
+      y: (100 - height) / 2,
+      width,
+      height,
+      viewBox: `0 0 ${width} ${height}`,
+      "data-layout-preview": "",
+    });
+    for (const c of cells)
+      preview.append(
+        svgNode("rect", {
+          x: c.x * width + 1,
+          y: c.y * height + 1,
+          width: Math.max(0.5, c.w * width - 2),
+          height: Math.max(0.5, c.h * height - 2),
+          rx: 1,
+        }),
+      );
+    svg.append(preview);
+    button.append(svg);
     button.addEventListener("click", () =>
       change(() => {
         state.layout = layout.id;
@@ -536,7 +575,15 @@ for (const [label, ratio] of RATIOS) {
   button.dataset.ratio = ratio;
   button.setAttribute("aria-label", `縦横比 ${label}`);
   const size = outputSize(ratio, 20);
-  button.innerHTML = `<span class="ratio-shape"><span style="width:${size.width}px;height:${size.height}px"></span></span><span>${label}</span>`;
+  const shape = document.createElement("span");
+  shape.className = "ratio-shape";
+  const outline = document.createElement("span");
+  outline.style.width = `${size.width}px`;
+  outline.style.height = `${size.height}px`;
+  shape.append(outline);
+  const caption = document.createElement("span");
+  caption.textContent = label;
+  button.append(shape, caption);
   button.addEventListener("click", () =>
     change(() => {
       state.ratio = ratio;
@@ -1003,8 +1050,18 @@ async function decode(blob) {
   const url = URL.createObjectURL(blob);
   const image = new Image();
   image.src = url;
+  let timer;
   try {
-    await image.decode();
+    await Promise.race([
+      image.decode(),
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(new Error("画像の読み込みが時間内に完了しませんでした。")),
+          15000,
+        );
+      }),
+    ]);
     if (!image.naturalWidth || !image.naturalHeight)
       throw new Error("画像サイズを読み取れませんでした。");
     return {
@@ -1015,8 +1072,11 @@ async function decode(blob) {
       height: image.naturalHeight,
     };
   } catch (error) {
+    image.removeAttribute("src");
     URL.revokeObjectURL(url);
     throw error;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -1034,19 +1094,22 @@ function canvasBlob(target, type = "image/png", quality) {
 }
 
 async function importImage(file) {
-  if (file.size > 50 * 1024 * 1024)
-    throw new Error("1枚50MB以下の画像を選んでください。");
-  if (/svg|html|pdf/i.test(file.type) || /\.(svg|html?|pdf)$/i.test(file.name))
-    throw new Error("JPEG・PNGなどの画像を選んでください。");
+  const detected = await inspectImage(file);
   let source;
   try {
-    source = await decode(file);
+    source = await decode(new Blob([file], { type: detected.type }));
   } catch {
     throw new Error(
-      /heic|heif/i.test(file.type + file.name)
+      detected.type === "image/heic"
         ? "このブラウザではHEIC / HEIFを開けません。JPEG・PNGに変換してください。"
         : "画像として読み込めませんでした。JPEG・PNGなどを選んでください。",
     );
+  }
+  try {
+    checkDimensions(source.width, source.height);
+  } catch (error) {
+    URL.revokeObjectURL(source.url);
+    throw error;
   }
   const used = [...assets.values()].reduce(
     (sum, a) => sum + a.width * a.height,
@@ -1074,7 +1137,7 @@ async function importImage(file) {
     // Normalize orientation and freeze animations before both preview and persistence.
     const blob = await canvasBlob(
       buffer,
-      file.type === "image/jpeg" ? "image/jpeg" : "image/png",
+      detected.type === "image/jpeg" ? "image/jpeg" : "image/png",
       0.97,
     );
     return await decode(blob);
@@ -1123,6 +1186,7 @@ async function addFiles(files) {
   renderUI();
   const count = state.photos.length - before.photos.length;
   if (count) showToast(`${count}枚の画像を追加しました`);
+  else if (draftProtected) persist();
   else {
     $("draft-status").textContent = state.photos.length ? "下書き保存済み" : "";
     $("local-status").textContent = "端末内に自動保存";
@@ -1174,6 +1238,7 @@ $("new-collage").addEventListener("click", () => $("new-dialog").showModal());
 $("confirm-new").addEventListener("click", async () => {
   endGesture();
   state = initialState();
+  draftProtected = false;
   selected = null;
   undoStack = [];
   redoStack = [];
@@ -1292,29 +1357,36 @@ window.addEventListener("beforeunload", (event) => {
 
 async function initialize() {
   renderPhotos();
+  let draft;
   try {
-    const draft = await loadDraft();
-    if (
-      draft?.state?.version === 1 &&
-      Array.isArray(draft.state.photos) &&
-      draft.state.photos.length <= MAX_PHOTOS &&
-      Array.isArray(draft.images)
-    ) {
+    draft = await loadDraft();
+    if (draft != null) {
+      const checked = validateDraft(draft);
       const restored = new Map();
       try {
-        for (const stored of draft.images)
-          restored.set(
-            stored.id,
-            await decode(
-              stored.bytes
-                ? new Blob([stored.bytes], { type: stored.type })
-                : stored.blob,
-            ),
+        let totalPixels = 0;
+        for (const stored of checked.images) {
+          const detected = await inspectImage(stored.blob);
+          checkDimensions(detected.width, detected.height, 8_000_000);
+          totalPixels += detected.width * detected.height;
+          if (
+            totalPixels > MAX_PIXELS ||
+            Math.max(detected.width, detected.height) > 4096
+          )
+            throw new Error("Invalid draft image dimensions");
+          const asset = await decode(
+            new Blob([stored.blob], { type: detected.type }),
           );
-        if (assetIds(draft.state).some((id) => !restored.has(id)))
-          throw new Error("Missing image");
+          restored.set(stored.id, asset);
+          if (
+            asset.width * asset.height !== detected.width * detected.height ||
+            Math.max(asset.width, asset.height) !==
+              Math.max(detected.width, detected.height)
+          )
+            throw new Error("Invalid draft image dimensions");
+        }
         assets = restored;
-        state = restoreState(draft.state);
+        state = checked.state;
         selected = null;
         if (state.photos.length) showToast("前回の続きから編集できます");
       } catch (error) {
@@ -1324,8 +1396,11 @@ async function initialize() {
     }
   } catch {
     storageFailed = true;
+    draftProtected = draft != null;
     showError(
-      "下書きを読み込めませんでした。新しく編集できますが、完成画像はページを閉じる前に保存してください。",
+      draftProtected
+        ? "下書きを安全に読み込めないため、元のデータを残して自動保存を停止しました。編集した完成画像はダウンロードできます。下書きを破棄して再開する場合は「新しく作る」を選んでください。"
+        : "下書きを読み込めませんでした。新しく編集できますが、完成画像はページを閉じる前に保存してください。",
     );
   }
   ready = true;

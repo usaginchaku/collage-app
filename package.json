@@ -1,11 +1,13 @@
 {
   "name": "naraberu-collage",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "node scripts/server.mjs",
-    "check": "node --check src/app.js && node --check src/layouts.js && node --check src/render.js && node --check src/decoration.js && node --check src/storage.js",
+    "check": "node --check src/bootstrap.js && node --check src/app.js && node --check src/layouts.js && node --check src/render.js && node --check src/decoration.js && node --check src/storage.js && node --check src/image-input.js && node --check src/draft-validation.js && node --check scripts/server.mjs && node --check scripts/build.mjs && node --check scripts/security-check.mjs",
+    "security:check": "node scripts/security-check.mjs",
+    "build": "node scripts/build.mjs",
     "test": "node --test tests/*.test.mjs",
     "test:browser": "playwright test"
   },

@@ -260,15 +260,6 @@ export function initialState() {
   };
 }
 
-export function restoreState(saved) {
-  const defaults = initialState();
-  return {
-    ...defaults,
-    ...saved,
-    watermark: { ...defaults.watermark, ...saved.watermark },
-  };
-}
-
 export function newPhoto(id, name) {
   return {
     id,

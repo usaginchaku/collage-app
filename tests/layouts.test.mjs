@@ -9,8 +9,8 @@ import {
   getCells,
   frameResizeInfo,
   resizeFrame,
-  restoreState,
 } from "../src/layouts.js";
+import { validateState } from "../src/draft-validation.js";
 import { imagePlacement, hitTest, arrangeFree } from "../src/render.js";
 
 test("all 1–12 photo templates partition the canvas without overlaps or omissions", () => {
@@ -120,7 +120,7 @@ test("old drafts keep all edits while new controls start disabled", () => {
     split: 0.5,
   };
   old.photos[0].zoom = 1.6;
-  const restored = restoreState(old);
+  const restored = validateState(old);
   for (const [key, value] of Object.entries(old))
     assert.deepEqual(restored[key], value);
   assert.equal(restored.watermark.enabled, false);

@@ -1,0 +1,13 @@
+[
+  "index.html",
+  "assets/icon.svg",
+  "src/bootstrap.js",
+  "src/app.js",
+  "src/layouts.js",
+  "src/render.js",
+  "src/decoration.js",
+  "src/storage.js",
+  "src/draft-validation.js",
+  "src/image-input.js",
+  "src/style.css"
+]

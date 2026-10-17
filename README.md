@@ -23,7 +23,8 @@
 
 ## 制限
 
-- JPEG / PNG / WebPなど、ブラウザで読み込める画像に対応。HEIC / HEIFの可否はブラウザによります。読めない場合はJPEG / PNGへの変換を案内します。
+- JPEG / PNG / WebP / GIF / AVIF / HEIC・HEIFの実データを確認して読み込みます。実際にデコードできる形式はブラウザによります。SVG・HTMLなどの実行可能な形式は受け付けません。
+- 元画像は1枚50MB・6000万画素・一辺32768pxまで。展開前にも大きさを確認し、上限超過や不正な構造は拒否します。
 - 読込時に1枚あたり長辺4096px・800万画素以内、編集中の画像と履歴を合わせて4000万画素以内に調整します。元ファイルは変更しません。アニメーションは静止画として扱います。
 - PNG / JPEGの出力は長辺1080 / 2048 / 4096px。透明背景はPNGに対応し、JPEGでは白にします。
 - 下書きは端末間で同期しません。ブラウザデータの削除や容量制限、プライベートブラウズなどで消える場合があります。1つのブラウザでは1つの編集タブを使ってください。
@@ -38,29 +39,36 @@ npm ci
 npm run dev
 ```
 
-http://127.0.0.1:4173/ を開きます。配信用のビルドは不要です。
+http://127.0.0.1:4173/ を開きます。ローカルではソースをそのまま配信します。
 
 ```sh
 npm run check
+npm run security:check
 npm test
 npx playwright install chromium webkit
 npm run test:browser
+npm run build
 ```
 
 Playwrightは開発用だけで、公開アプリにライブラリを配信しません。テスト入力は人工の色画像で、個人の写真は含みません。検証内容と実機未確認の範囲は [docs/VERIFICATION.md](docs/VERIFICATION.md) を参照してください。
 
 ## 公開と構成
 
-GitHub Pagesの `main` ブランチ `/ (root)` から静的配信します。公開に必要なのは `index.html`、`src/`、`assets/`、`.nojekyll` です。クラウドAPI、APIキー、課金設定は不要です。
+GitHub Actionsで検証を通過した `main` のみGitHub Pagesへ静的配信します。`public-files.json` に列挙した11ファイルだけを `dist/` にコピーし、公開します。作業メモ、テスト、依存パッケージ、設定はサイトへ配信しません（公開リポジトリのソースとしては閲覧可能です）。クラウドAPI、APIキー、課金設定は不要です。
 
 - `src/app.js`: UI、編集履歴、ポインター操作、読込・保存
 - `src/layouts.js`: レイアウトと編集値
 - `src/render.js`: プレビュー・書き出し共通の描画
 - `src/decoration.js`: 自作の背景模様と任意の文字・透かし
 - `src/storage.js`: 下書きの保存・復元
+- `src/bootstrap.js`: 埋め込み時の停止、エディター起動
+- `src/image-input.js`: 画像の形式・構造・展開前サイズの検証
+- `src/draft-validation.js`: 保存済みの編集値・画像参照の検証
 - `src/style.css`: PC / スマホの画面
 - `tests/`: 幾何学、画像出力、操作、互換性の検証
 
 設計時の指示と参考記事の取り入れ方: [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md)
 
 背景素材の確認: [docs/BACKGROUNDS.md](docs/BACKGROUNDS.md)
+
+セキュリティ対策と配信環境の制約: [SECURITY.md](SECURITY.md)
