@@ -51,6 +51,239 @@ async function exportedPixel(page, x, y) {
   );
 }
 
+test("ratio-shaped thumbnails and per-frame resizing survive undo and reload", async ({
+  page,
+}, info) => {
+  await start(page);
+  await page.getByRole("tab", { name: "レイアウト", exact: true }).click();
+  await page.getByRole("button", { name: "縦横比 3:4", exact: true }).click();
+  const ratio = await page
+    .locator("[data-layout-preview]")
+    .first()
+    .evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return rect.width / rect.height;
+    });
+  // SVG bounds include the visible cells, inset by one unit on each outside edge.
+  expect(ratio).toBeCloseTo((75 - 2) / (100 - 2), 2);
+  await page.locator('[data-layout="rows-2"]').click();
+  await page.screenshot({ path: info.outputPath("ratio-layouts.png") });
+  await page.getByRole("tab", { name: "フレーム", exact: true }).click();
+  await page.locator("#frame-size-detail summary").click();
+  await page.locator("#frame-photo").selectOption({ index: 1 });
+  await range(page, "frame-width", 65);
+  await range(page, "frame-height", 60);
+  const resized = await draft(page);
+  expect(resized.frameLayout.cells[0].w).toBeCloseTo(0.65);
+  expect(resized.frameLayout.cells[0].h).toBeCloseTo(0.6);
+  expect(resized.frameLayout.cells[1].w).toBeCloseTo(0.35);
+  await page.locator("#undo").click();
+  expect((await draft(page)).frameLayout.cells[0].h).toBeCloseTo(0.5);
+  await page.locator("#redo").click();
+  await page.screenshot({ path: info.outputPath("frame-sizing.png") });
+  // Selecting directly on the preview must keep the frame panel open.
+  const box = await page.locator("#collage").boundingBox();
+  await page
+    .locator("#collage")
+    .click({ position: { x: box.width * 0.2, y: box.height * 0.2 } });
+  await expect(page.locator("#tab-frame")).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  const saved = await draft(page);
+  await page.reload();
+  await expect(page.locator("#photo-count")).toHaveText("3");
+  expect(await draft(page)).toEqual(saved);
+  await page.getByRole("tab", { name: "レイアウト", exact: true }).click();
+  await page.getByRole("button", { name: "縦横比 16:9", exact: true }).click();
+  expect((await draft(page)).frameLayout).toEqual(saved.frameLayout);
+  await page.locator('[data-layout="rows-1"]').click();
+  expect((await draft(page)).frameLayout).toBeNull();
+});
+
+test("background images and patterns export, restore, and undo without changing photo count", async ({
+  page,
+}, info) => {
+  await start(page, 1);
+  await page.getByRole("tab", { name: "フレーム", exact: true }).click();
+  await page.locator("#background-detail summary").click();
+  await page.locator("#background-input").setInputFiles(fixtures[1]);
+  await expect(page.locator("#background-preview")).toBeVisible();
+  const withBackground = await draft(page);
+  expect(withBackground.backgroundImage).toBeTruthy();
+  await expect(page.locator("#photo-count")).toHaveText("1");
+  await page.locator("#export-open").click();
+  await expect(page.locator("#download")).toBeEnabled();
+  expect((await exportedPixel(page, 0, 0)).pixel).toEqual([40, 120, 220, 255]);
+  await page.locator("#export-dialog [data-close]").click();
+  await page.locator('[data-pattern="checks"]').click();
+  expect((await draft(page)).backgroundImage).toBeNull();
+  await page.locator("#undo").click();
+  expect((await draft(page)).backgroundImage).toBe(
+    withBackground.backgroundImage,
+  );
+  await page.reload();
+  await expect(page.locator("#photo-count")).toHaveText("1");
+  expect((await draft(page)).backgroundImage).toBe(
+    withBackground.backgroundImage,
+  );
+  await page.getByRole("tab", { name: "フレーム", exact: true }).click();
+  await page.locator("#background-detail summary").click();
+  await page.locator('[data-pattern="checks"]').click();
+  await expect
+    .poll(() =>
+      page.locator("#collage").evaluate((canvas) => {
+        const ctx = canvas.getContext("2d");
+        return [
+          ...ctx.getImageData(
+            Math.floor(canvas.width / 2),
+            Math.floor(canvas.height / 2),
+            1,
+            1,
+          ).data,
+        ];
+      }),
+    )
+    .toEqual([230, 60, 70, 255]);
+  await page.screenshot({ path: info.outputPath("backgrounds.png") });
+  await page.locator("#export-open").click();
+  await expect(page.locator("#download")).toBeEnabled();
+  expect((await exportedPixel(page, 1, 1)).pixel).not.toEqual([
+    255, 255, 255, 255,
+  ]);
+  expect((await exportedPixel(page, 90, 1)).pixel).toEqual([
+    255, 255, 255, 255,
+  ]);
+});
+
+test("legacy draft keeps its photo edits and new options default to off", async ({
+  page,
+}) => {
+  await start(page, 1);
+  await range(page, "photo-zoom", 1.6);
+  const saved = await draft(page);
+  await page.evaluate(
+    () =>
+      new Promise((resolve, reject) => {
+        const open = indexedDB.open("naraberu-collage", 1);
+        open.onsuccess = () => {
+          const db = open.result;
+          const tx = db.transaction("draft", "readwrite"),
+            store = tx.objectStore("draft");
+          const get = store.get("current");
+          get.onsuccess = () => {
+            const old = get.result;
+            for (const key of [
+              "watermark",
+              "backgroundImage",
+              "backgroundPattern",
+              "frameLayout",
+            ])
+              delete old.state[key];
+            store.put(old, "current");
+          };
+          tx.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          tx.onerror = reject;
+        };
+      }),
+  );
+  await page.reload();
+  await expect(page.locator("#photo-count")).toHaveText("1");
+  await page.locator(".photo-thumb").click();
+  await expect(page.locator("#photo-zoom")).toHaveValue("1.6");
+  await page.getByRole("tab", { name: "フレーム", exact: true }).click();
+  await page.locator("#watermark-detail summary").click();
+  await expect(page.locator("#watermark-enabled")).not.toBeChecked();
+  await range(page, "gap", 2);
+  const migrated = await draft(page);
+  expect(migrated.photos).toEqual(saved.photos);
+  expect(migrated.watermark.enabled).toBe(false);
+  expect(migrated.backgroundImage).toBeNull();
+});
+
+test("optional ID and repeating watermark affect only enabled exports", async ({
+  page,
+}, info) => {
+  await start(page, 1);
+  await page.getByRole("tab", { name: "フレーム", exact: true }).click();
+  await range(page, "margin", 0);
+  const exportInk = async () => {
+    await page.locator("#export-open").click();
+    await expect(page.locator("#download")).toBeEnabled();
+    const result = await page.locator("#export-image").evaluate(async (img) => {
+      await img.decode();
+      const c = document.createElement("canvas");
+      c.width = c.height = 256;
+      const ctx = c.getContext("2d");
+      ctx.drawImage(img, 0, 0, 256, 256);
+      const p = ctx.getImageData(0, 0, 256, 256).data;
+      let top = 0,
+        bottom = 0;
+      for (let i = 0; i < p.length; i += 4) {
+        if (
+          Math.abs(p[i] - 230) +
+            Math.abs(p[i + 1] - 60) +
+            Math.abs(p[i + 2] - 70) >
+          12
+        ) {
+          if (i / 4 / 256 < 128) top++;
+          else bottom++;
+        }
+      }
+      return { top, bottom };
+    });
+    await page.locator("#export-dialog [data-close]").click();
+    return result;
+  };
+  expect(await exportInk()).toEqual({ top: 0, bottom: 0 });
+  await page.locator("#watermark-detail summary").click();
+  await page.locator("#watermark-enabled").check();
+  await page.locator("#watermark-text").fill("@my_sample");
+  await page.locator("#watermark-text").press("Tab");
+  const corner = await exportInk();
+  expect(corner.top).toBe(0);
+  expect(corner.bottom).toBeGreaterThan(30);
+  await page.locator("#watermark-text").fill("SAMPLE");
+  await page.locator("#watermark-mode").selectOption("repeat");
+  const repeated = await exportInk();
+  expect(repeated.top).toBeGreaterThan(100);
+  expect(repeated.bottom).toBeGreaterThan(100);
+  const saved = await draft(page);
+  await page.screenshot({ path: info.outputPath("watermark.png") });
+  await page.reload();
+  await expect(page.locator("#photo-count")).toHaveText("1");
+  expect((await draft(page)).watermark).toEqual(saved.watermark);
+  await page.getByRole("tab", { name: "フレーム", exact: true }).click();
+  await page.locator("#watermark-detail summary").click();
+  await page.locator("#watermark-enabled").uncheck();
+  expect(await exportInk()).toEqual({ top: 0, bottom: 0 });
+});
+
+test("free frame width and height stay independent and overall scaling preserves their ratio", async ({
+  page,
+}) => {
+  await start(page, 1);
+  await page.getByRole("tab", { name: "レイアウト", exact: true }).click();
+  await page.locator("#mode-free").click();
+  await page.getByRole("tab", { name: "フレーム", exact: true }).click();
+  await page.locator("#frame-size-detail summary").click();
+  await range(page, "frame-width", 60);
+  await range(page, "frame-height", 30);
+  const resized = (await draft(page)).photos[0].free;
+  expect(resized.w).toBeCloseTo(0.6);
+  expect(resized.h).toBeCloseTo(0.3);
+  await page.getByRole("tab", { name: /^画像/ }).click();
+  await range(page, "photo-zoom", 1.2);
+  const scaled = (await draft(page)).photos[0].free;
+  expect(scaled.h).toBeCloseTo(0.6);
+  await page.getByRole("tab", { name: "フレーム", exact: true }).click();
+  await page.locator("#reset-frames").click();
+  expect((await draft(page)).photos[0].free.h).toBeUndefined();
+});
+
 test("add, layout, frame, preview, export and actual download", async ({
   page,
 }, info) => {
@@ -344,13 +577,11 @@ test("phone JPEG EXIF orientation is normalized and survives reload", async ({
     "hex",
   );
   const oriented = Buffer.concat([jpeg.subarray(0, 2), exif, jpeg.subarray(2)]);
-  await page
-    .locator("#file-input")
-    .setInputFiles({
-      name: "phone-portrait.jpg",
-      mimeType: "image/jpeg",
-      buffer: oriented,
-    });
+  await page.locator("#file-input").setInputFiles({
+    name: "phone-portrait.jpg",
+    mimeType: "image/jpeg",
+    buffer: oriented,
+  });
   await expect(page.locator("#photo-count")).toHaveText("1");
   await page.locator("#fit-photo").click();
   await page.locator("#export-open").click();
@@ -375,13 +606,11 @@ test("large images are bounded on import and alpha is preserved", async ({
 }) => {
   await page.goto("./");
   await expect(page.locator("[data-add]").first()).toBeEnabled();
-  await page
-    .locator("#file-input")
-    .setInputFiles({
-      name: "large-alpha.png",
-      mimeType: "image/png",
-      buffer: png(5000, 2000, [200, 100, 50], 128),
-    });
+  await page.locator("#file-input").setInputFiles({
+    name: "large-alpha.png",
+    mimeType: "image/png",
+    buffer: png(5000, 2000, [200, 100, 50], 128),
+  });
   await expect(page.locator("#photo-count")).toHaveText("1");
   const imageSize = await page
     .locator(".photo-thumb img")

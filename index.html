@@ -281,6 +281,43 @@
             class="panel"
             hidden
           >
+            <details class="frame-detail" id="frame-size-detail">
+              <summary>画像ごとの枠サイズ</summary>
+              <label class="frame-target" for="frame-photo"
+                >画像<select id="frame-photo"></select
+              ></label>
+              <div class="control-row slider-row">
+                <label for="frame-width">幅</label
+                ><input
+                  id="frame-width"
+                  type="range"
+                  min="4"
+                  max="96"
+                  step="0.1"
+                  value="50"
+                  disabled
+                /><output id="frame-width-value" for="frame-width">—</output>
+              </div>
+              <div class="control-row slider-row">
+                <label for="frame-height">高さ</label
+                ><input
+                  id="frame-height"
+                  type="range"
+                  min="4"
+                  max="96"
+                  step="0.1"
+                  value="50"
+                  disabled
+                /><output id="frame-height-value" for="frame-height">—</output>
+              </div>
+              <div class="frame-size-footer">
+                <span id="frame-size-hint" class="muted"
+                  >隣の枠も合わせて調整します</span
+                ><button id="reset-frames" class="text-button subtle">
+                  リセット
+                </button>
+              </div>
+            </details>
             <div class="section-heading"><h2>余白と角丸</h2></div>
             <div id="grid-spacing">
               <div class="control-row slider-row">
@@ -329,6 +366,103 @@
               /></label>
             </div>
             <div id="color-list" class="color-list" aria-label="背景色"></div>
+            <details class="frame-detail" id="background-detail">
+              <summary>背景の模様・画像</summary>
+              <div class="pattern-list" aria-label="背景の模様">
+                <button
+                  data-pattern="none"
+                  aria-label="模様なし"
+                  aria-pressed="true"
+                >
+                  <span class="pattern-swatch"></span>なし
+                </button>
+                <button
+                  data-pattern="dots"
+                  aria-label="模様 ドット"
+                  aria-pressed="false"
+                >
+                  <span class="pattern-swatch dots"></span>ドット
+                </button>
+                <button
+                  data-pattern="stripes"
+                  aria-label="模様 ストライプ"
+                  aria-pressed="false"
+                >
+                  <span class="pattern-swatch stripes"></span>ストライプ
+                </button>
+                <button
+                  data-pattern="checks"
+                  aria-label="模様 チェック"
+                  aria-pressed="false"
+                >
+                  <span class="pattern-swatch checks"></span>チェック
+                </button>
+              </div>
+              <div class="background-image-row">
+                <img id="background-preview" alt="背景画像" hidden /><button
+                  id="choose-background"
+                  class="button secondary"
+                >
+                  背景画像を選ぶ</button
+                ><button
+                  id="remove-background"
+                  class="text-button subtle"
+                  hidden
+                >
+                  外す
+                </button>
+              </div>
+            </details>
+            <details class="frame-detail" id="watermark-detail">
+              <summary>文字・透かし</summary>
+              <label class="check-label"
+                ><input
+                  id="watermark-enabled"
+                  type="checkbox"
+                />文字を入れる</label
+              >
+              <div id="watermark-fields" hidden>
+                <label class="watermark-text-label" for="watermark-text"
+                  >入れる文字</label
+                >
+                <input
+                  id="watermark-text"
+                  type="text"
+                  maxlength="60"
+                  placeholder="@your_id / SAMPLE"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+                <div class="watermark-options">
+                  <label for="watermark-mode"
+                    >配置<select id="watermark-mode">
+                      <option value="corner">右下</option>
+                      <option value="repeat">全体に繰り返す</option>
+                    </select></label
+                  ><label class="custom-color"
+                    ><span>色</span
+                    ><input
+                      id="watermark-color"
+                      type="color"
+                      value="#ffffff"
+                      aria-label="文字の色"
+                  /></label>
+                </div>
+                <div class="control-row slider-row">
+                  <label for="watermark-opacity">濃さ</label
+                  ><input
+                    id="watermark-opacity"
+                    type="range"
+                    min="10"
+                    max="100"
+                    step="5"
+                    value="65"
+                  /><output id="watermark-opacity-value" for="watermark-opacity"
+                    >65%</output
+                  >
+                </div>
+              </div>
+            </details>
           </section>
         </div>
         <div class="inspector-footer">
@@ -346,6 +480,12 @@
       hidden
     />
     <div id="toast" class="toast" role="status" hidden></div>
+    <input
+      id="background-input"
+      type="file"
+      accept="image/*,.heic,.heif"
+      hidden
+    />
     <div id="error-banner" class="error-banner" role="alert" hidden>
       <span></span
       ><button class="icon-button" aria-label="メッセージを閉じる">
@@ -418,9 +558,23 @@
         </li>
         <li>
           <strong>1枚の画像に保存</strong
-          ><span>右上の「保存」からPNG・JPEGで出力。透かしは入りません。</span>
+          ><span
+            >右上の「保存」からPNG・JPEGで出力。アプリの透かしは入りません。</span
+          >
         </li>
       </ol>
+      <details>
+        <summary>枠のサイズ・背景・文字</summary>
+        <p>
+          「フレーム」の「画像ごとの枠サイズ」を開き、画像を選んで幅・高さを調整できます。レイアウト配置では隣の枠も連動します。端から端まで使う枠は、その方向には変更できません。幅・高さは余白を除く配置領域に対する割合です。
+        </p>
+        <p>
+          レイアウト・分割位置・画像枚数を変えると枠の調整はリセットされます。縦横比を変えた場合は保ちます。「元に戻す」から調整前へ戻せます。自由配置では幅と高さを別々に変更でき、画像を変形させず中央で切り抜きます。
+        </p>
+        <p>
+          背景には色・自作の模様・端末の画像を使えます。背景画像は中央を基準に全面へ広げます。「文字・透かし」は任意で、IDを右下に置いたり、SAMPLEなどを全面に繰り返せます。
+        </p>
+      </details>
       <details>
         <summary>下書き・プライバシー</summary>
         <p>

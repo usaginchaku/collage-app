@@ -3,6 +3,13 @@ const STORE = "draft";
 let connection;
 const encodedImages = new WeakMap();
 
+export function assetIds(state) {
+  return [
+    ...state.photos.map((photo) => photo.id),
+    ...(state.backgroundImage ? [state.backgroundImage] : []),
+  ];
+}
+
 function openDB() {
   if (!connection)
     connection = new Promise((resolve, reject) => {
@@ -35,11 +42,11 @@ export async function saveDraft(state, assets) {
   // Some WebKit environments cannot persist Blob objects. Store their bytes instead,
   // and prepare them before opening a transaction (which otherwise becomes inactive).
   const images = await Promise.all(
-    state.photos.map(async (photo) => {
-      const blob = assets.get(photo.id).blob;
+    assetIds(state).map(async (id) => {
+      const blob = assets.get(id).blob;
       if (!encodedImages.has(blob)) encodedImages.set(blob, blob.arrayBuffer());
       return {
-        id: photo.id,
+        id,
         bytes: await encodedImages.get(blob),
         type: blob.type,
       };

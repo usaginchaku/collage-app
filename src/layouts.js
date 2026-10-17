@@ -118,13 +118,98 @@ export function getLayout(state) {
   return layouts.find((layout) => layout.id === state.layout) || layouts[0];
 }
 
+function frameKey(state) {
+  return `${getLayout(state).id}:${state.photos.length}:${state.split}`;
+}
+
+export function getCells(state) {
+  return state.frameLayout?.key === frameKey(state)
+    ? state.frameLayout.cells
+    : getLayout(state).cells;
+}
+
+// Only connect edges with a positive overlap. Edges meeting at a corner may
+// move independently, so changing one row's width does not change every row.
+export function frameResizeInfo(state, index, axis) {
+  const cells = getCells(state);
+  const cell = cells[index];
+  if (!cell) return null;
+  const [pos, size, cross, span] =
+    axis === "w" ? ["x", "w", "y", "h"] : ["y", "h", "x", "w"];
+  const epsilon = 1e-7;
+  const atEnd = cell[pos] + cell[size] < 1 - epsilon;
+  if (!atEnd && cell[pos] < epsilon) return null;
+  const edge = cell[pos] + (atEnd ? cell[size] : 0);
+  let low = cell[cross],
+    high = low + cell[span];
+  const connected = new Set();
+  let grew = true;
+  while (grew) {
+    grew = false;
+    cells.forEach((c, i) => {
+      const onEdge =
+        Math.abs(c[pos] - edge) < epsilon ||
+        Math.abs(c[pos] + c[size] - edge) < epsilon;
+      if (
+        connected.has(i) ||
+        !onEdge ||
+        c[cross] >= high - epsilon ||
+        c[cross] + c[span] <= low + epsilon
+      )
+        return;
+      connected.add(i);
+      low = Math.min(low, c[cross]);
+      high = Math.max(high, c[cross] + c[span]);
+      grew = true;
+    });
+  }
+  const starts = [],
+    ends = [];
+  let minDelta = -Infinity,
+    maxDelta = Infinity;
+  for (const i of connected) {
+    const c = cells[i];
+    if (Math.abs(c[pos] - edge) < epsilon) {
+      starts.push(i);
+      maxDelta = Math.min(maxDelta, c[size] - 0.035);
+    } else {
+      ends.push(i);
+      minDelta = Math.max(minDelta, 0.035 - c[size]);
+    }
+  }
+  return {
+    pos,
+    size,
+    starts,
+    ends,
+    atEnd,
+    value: cell[size],
+    min: cell[size] + (atEnd ? minDelta : -maxDelta),
+    max: cell[size] + (atEnd ? maxDelta : -minDelta),
+  };
+}
+
+export function resizeFrame(state, index, axis, value) {
+  const info = frameResizeInfo(state, index, axis);
+  if (!info) return;
+  const cells = getCells(state).map((c) => ({ ...c }));
+  const delta =
+    (clamp(value, info.min, info.max) - info.value) * (info.atEnd ? 1 : -1);
+  for (const i of info.starts) {
+    cells[i][info.pos] += delta;
+    cells[i][info.size] -= delta;
+  }
+  for (const i of info.ends) cells[i][info.size] += delta;
+  state.frameLayout = { key: frameKey(state), cells };
+}
+
 export function gridRects(state, width, height) {
   const base = Math.min(width, height);
   const margin = (base * state.margin) / 100;
   const gap = (base * state.gap) / 100;
   const areaW = width - 2 * margin;
   const areaH = height - 2 * margin;
-  return getLayout(state).cells.map((c) => {
+  return getCells(state).map((c) => {
     // Each internal edge contributes half a gap; outside edges keep the requested margin.
     const left = c.x > 0.0001 ? gap / 2 : 0;
     const top = c.y > 0.0001 ? gap / 2 : 0;
@@ -161,7 +246,26 @@ export function initialState() {
     margin: 2.4,
     radius: 0,
     background: "#ffffff",
+    backgroundImage: null,
+    backgroundPattern: "none",
+    watermark: {
+      enabled: false,
+      text: "",
+      mode: "corner",
+      opacity: 0.65,
+      color: "#ffffff",
+    },
+    frameLayout: null,
     split: 0.6,
+  };
+}
+
+export function restoreState(saved) {
+  const defaults = initialState();
+  return {
+    ...defaults,
+    ...saved,
+    watermark: { ...defaults.watermark, ...saved.watermark },
   };
 }
 

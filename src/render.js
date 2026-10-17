@@ -1,11 +1,12 @@
 import { gridRects, clamp } from "./layouts.js";
+import { drawBackground, drawWatermark } from "./decoration.js";
 
 export function photoRect(state, photo, index, assets, width, height) {
   if (state.mode === "grid") return gridRects(state, width, height)[index];
   const asset = assets.get(photo.id);
   const free = photo.free || { x: 0.5, y: 0.5, w: 0.5 };
   const w = free.w * width;
-  const h = (w * asset.height) / asset.width;
+  const h = free.h != null ? free.h * width : (w * asset.height) / asset.width;
   return { x: free.x * width - w / 2, y: free.y * height - h / 2, w, h };
 }
 
@@ -55,6 +56,7 @@ export function renderCollage(
   }
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
+  drawBackground(ctx, state, assets, width, height);
   const radius = (Math.min(width, height) * state.radius) / 100;
   const rects = state.mode === "grid" ? gridRects(state, width, height) : null;
   state.photos.forEach((photo, index) => {
@@ -71,7 +73,14 @@ export function renderCollage(
       roundedPath(ctx, local, radius);
       ctx.clip();
       if (photo.flip) ctx.scale(-1, 1);
-      ctx.drawImage(asset.image, local.x, local.y, rect.w, rect.h);
+      const scale = Math.max(rect.w / asset.width, rect.h / asset.height);
+      ctx.drawImage(
+        asset.image,
+        (-asset.width * scale) / 2,
+        (-asset.height * scale) / 2,
+        asset.width * scale,
+        asset.height * scale,
+      );
     } else {
       roundedPath(ctx, rect, radius);
       ctx.clip();
@@ -89,6 +98,7 @@ export function renderCollage(
     }
     ctx.restore();
   });
+  drawWatermark(ctx, state, width, height);
 }
 
 export function hitTest(state, assets, x, y, width, height) {

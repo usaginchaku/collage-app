@@ -6,6 +6,10 @@ import {
   initialState,
   newPhoto,
   outputSize,
+  getCells,
+  frameResizeInfo,
+  resizeFrame,
+  restoreState,
 } from "../src/layouts.js";
 import { imagePlacement, hitTest, arrangeFree } from "../src/render.js";
 
@@ -34,6 +38,94 @@ test("all 1–12 photo templates partition the canvas without overlaps or omissi
         assert.ok(Math.abs(area - 1) < 1e-10);
       }
     }
+});
+
+function assertPartition(cells) {
+  let area = 0;
+  cells.forEach((a, i) => {
+    assert.ok(a.w > 0 && a.h > 0);
+    assert.ok(
+      a.x >= -1e-8 &&
+        a.y >= -1e-8 &&
+        a.x + a.w <= 1 + 1e-8 &&
+        a.y + a.h <= 1 + 1e-8,
+    );
+    area += a.w * a.h;
+    for (const b of cells.slice(i + 1)) {
+      const overlap =
+        Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) *
+        Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+      assert.ok(overlap < 1e-9, "frames must not overlap");
+    }
+  });
+  assert.ok(Math.abs(area - 1) < 1e-8, "frames must fill the canvas");
+}
+
+test("resizing every frame to both limits and intermediate sizes preserves a complete partition", () => {
+  for (let count = 1; count <= 12; count++) {
+    for (const layout of getLayouts(count)) {
+      const state = {
+        ...initialState(),
+        layout: layout.id,
+        photos: Array.from({ length: count }, (_, i) =>
+          newPhoto(String(i), "test"),
+        ),
+      };
+      for (let round = 0; round < 3; round++)
+        for (let i = 0; i < count; i++)
+          for (const axis of ["w", "h"]) {
+            const info = frameResizeInfo(state, i, axis);
+            if (!info) continue;
+            const value =
+              round === 0
+                ? info.min
+                : round === 1
+                  ? info.max
+                  : (info.min + info.max) / 2;
+            resizeFrame(state, i, axis, value);
+            assert.ok(Math.abs(getCells(state)[i][axis] - value) < 1e-8);
+            assertPartition(getCells(state));
+          }
+    }
+  }
+});
+
+test("only connected edges move; ratio changes preserve edits and new templates reset them", () => {
+  const state = {
+    ...initialState(),
+    layout: "rows-2",
+    photos: [0, 1, 2, 3].map((i) => newPhoto(String(i), "test")),
+  };
+  resizeFrame(state, 0, "w", 0.7);
+  assert.equal(getCells(state)[0].w, 0.7);
+  assert.ok(Math.abs(getCells(state)[1].w - 0.3) < 1e-8);
+  assert.equal(getCells(state)[2].w, 0.5);
+  state.ratio = 9 / 16;
+  assert.equal(getCells(state)[0].w, 0.7);
+  state.layout = "rows-1";
+  assert.equal(getCells(state)[0].w, 0.25);
+});
+
+test("old drafts keep all edits while new controls start disabled", () => {
+  const old = {
+    version: 1,
+    photos: [newPhoto("a", "original.png")],
+    mode: "grid",
+    layout: "single",
+    ratio: 3 / 4,
+    gap: 4,
+    margin: 6,
+    radius: 3,
+    background: "#f3dce0",
+    split: 0.5,
+  };
+  old.photos[0].zoom = 1.6;
+  const restored = restoreState(old);
+  for (const [key, value] of Object.entries(old))
+    assert.deepEqual(restored[key], value);
+  assert.equal(restored.watermark.enabled, false);
+  assert.equal(restored.backgroundImage, null);
+  assert.equal(restored.backgroundPattern, "none");
 });
 
 test("large margins and gaps stay valid for every template at portrait and landscape extremes", () => {

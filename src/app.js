@@ -8,6 +8,10 @@ import {
   initialState,
   newPhoto,
   resetCrop,
+  getCells,
+  frameResizeInfo,
+  resizeFrame,
+  restoreState,
 } from "./layouts.js";
 import {
   renderCollage,
@@ -16,7 +20,7 @@ import {
   hitTest,
   arrangeFree,
 } from "./render.js";
-import { loadDraft, saveDraft } from "./storage.js";
+import { loadDraft, saveDraft, assetIds } from "./storage.js";
 
 const $ = (id) => document.getElementById(id);
 const icons = {
@@ -92,11 +96,7 @@ $("error-banner")
   });
 
 function pruneAssets() {
-  const used = new Set(
-    [state, ...undoStack, ...redoStack].flatMap((s) =>
-      s.photos.map((p) => p.id),
-    ),
-  );
+  const used = new Set([state, ...undoStack, ...redoStack].flatMap(assetIds));
   for (const [id, asset] of assets)
     if (!used.has(id)) {
       URL.revokeObjectURL(asset.url);
@@ -167,7 +167,8 @@ function updateHistory() {
   $("undo").disabled = !undoStack.length || importing;
   $("redo").disabled = !redoStack.length || importing;
   $("export-open").disabled = !state.photos.length || importing;
-  $("new-collage").disabled = !state.photos.length || importing;
+  $("new-collage").disabled =
+    (!state.photos.length && !state.backgroundImage) || importing;
 }
 
 function history(direction) {
@@ -301,10 +302,14 @@ function renderLayouts() {
     button.dataset.layout = layout.id;
     button.setAttribute("aria-label", layout.name);
     button.setAttribute("aria-pressed", String(layout.id === current.id));
-    button.innerHTML = `<svg viewBox="0 0 100 100" aria-hidden="true">${layout.cells.map((c) => `<rect x="${c.x * 100 + 2}" y="${c.y * 100 + 2}" width="${Math.max(1, c.w * 100 - 4)}" height="${Math.max(1, c.h * 100 - 4)}" rx="2"/>`).join("")}</svg>`;
+    const width = state.ratio >= 1 ? 100 : 100 * state.ratio;
+    const height = state.ratio >= 1 ? 100 / state.ratio : 100;
+    const cells = layout.id === current.id ? getCells(state) : layout.cells;
+    button.innerHTML = `<svg viewBox="0 0 100 100" aria-hidden="true"><svg x="${(100 - width) / 2}" y="${(100 - height) / 2}" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-layout-preview>${cells.map((c) => `<rect x="${c.x * width + 1}" y="${c.y * height + 1}" width="${Math.max(0.5, c.w * width - 2)}" height="${Math.max(0.5, c.h * height - 2)}" rx="1"/>`).join("")}</svg></svg>`;
     button.addEventListener("click", () =>
       change(() => {
         state.layout = layout.id;
+        state.frameLayout = null;
       }),
     );
     $("layout-list").append(button);
@@ -333,6 +338,7 @@ function renderLayouts() {
 }
 
 function renderFrame() {
+  renderFrameSize();
   for (const key of ["gap", "margin", "radius"]) {
     $(key).value = state[key];
     $(`${key}-value`).textContent = Number(state[key].toFixed(1));
@@ -347,6 +353,96 @@ function renderFrame() {
         String(button.dataset.color === state.background),
       ),
     );
+  document.querySelectorAll("[data-pattern]").forEach((button) => {
+    button.setAttribute(
+      "aria-pressed",
+      String(
+        !state.backgroundImage &&
+          button.dataset.pattern === state.backgroundPattern,
+      ),
+    );
+  });
+  $("choose-background").disabled = !ready || importing;
+  $("choose-background").textContent = state.backgroundImage
+    ? "背景画像を変更"
+    : "背景画像を選ぶ";
+  $("remove-background").hidden = !state.backgroundImage;
+  const preview = $("background-preview");
+  preview.hidden = !state.backgroundImage;
+  if (state.backgroundImage)
+    preview.src = assets.get(state.backgroundImage).url;
+  else preview.removeAttribute("src");
+  const mark = state.watermark;
+  $("watermark-enabled").checked = mark.enabled;
+  $("watermark-fields").hidden = !mark.enabled;
+  $("watermark-text").value = mark.text;
+  $("watermark-mode").value = mark.mode;
+  $("watermark-color").value = mark.color;
+  $("watermark-opacity").value = mark.opacity * 100;
+  $("watermark-opacity-value").textContent =
+    `${Math.round(mark.opacity * 100)}%`;
+}
+
+function renderFrameSize() {
+  const target = $("frame-photo");
+  const ids = state.photos.map((p) => p.id).join(",");
+  if (target.dataset.ids !== ids) {
+    target.replaceChildren(new Option("画像を選択", ""));
+    state.photos.forEach((photo, i) =>
+      target.add(new Option(`画像 ${i + 1} · ${photo.name}`, photo.id)),
+    );
+    target.dataset.ids = ids;
+  }
+  target.value = selected || "";
+  target.disabled = !state.photos.length;
+  const photo = selectedPhoto();
+  const free = state.mode === "free";
+  for (const [axis, id] of [
+    ["w", "width"],
+    ["h", "height"],
+  ]) {
+    const control = $(`frame-${id}`);
+    let value = 0,
+      min = 0,
+      max = 100;
+    let enabled = false;
+    if (photo) {
+      if (free) {
+        const asset = assets.get(photo.id);
+        value =
+          axis === "w"
+            ? photo.free.w
+            : (photo.free.h ?? (photo.free.w * asset.height) / asset.width) *
+              state.ratio;
+        min = 8;
+        max = 150;
+        enabled = true;
+      } else {
+        const index = state.photos.indexOf(photo);
+        value = getCells(state)[index][axis];
+        const info = frameResizeInfo(state, index, axis);
+        if (info) {
+          min = Math.ceil(info.min * 1000 - 1e-6) / 10;
+          max = Math.floor(info.max * 1000 + 1e-6) / 10;
+          enabled = max > min;
+        }
+      }
+    }
+    control.min = min;
+    control.max = max;
+    control.value = value * 100;
+    control.disabled = !enabled;
+    $(`frame-${id}-value`).textContent = photo
+      ? `${Math.round(value * 100)}%`
+      : "—";
+  }
+  $("frame-size-hint").textContent = free
+    ? "キャンバスに対する幅・高さ"
+    : "隣の枠も合わせて調整します";
+  $("reset-frames").disabled = free
+    ? !photo || photo.free.h == null
+    : !state.frameLayout;
+  $("reset-frames").textContent = free ? "元の縦横比" : "枠をすべて戻す";
 }
 
 function renderUI() {
@@ -373,8 +469,9 @@ function renderUI() {
 
 function select(id, openPanel = true) {
   selected = id;
-  if (openPanel && id) setTab("photos");
+  if (openPanel && id && activeTab !== "frame") setTab("photos");
   renderPhotos();
+  renderFrameSize();
   $("deselect").hidden = !id;
   $("gesture-hint").textContent = id
     ? state.mode === "free"
@@ -514,6 +611,7 @@ bindSlider(
   "split",
   (value) => {
     state.split = value / 100;
+    state.frameLayout = null;
   },
   renderLayouts,
 );
@@ -521,8 +619,12 @@ bindSlider(
   "photo-zoom",
   (value) => {
     const photo = selectedPhoto();
-    if (photo)
-      state.mode === "free" ? (photo.free.w = value) : (photo.zoom = value);
+    if (photo) {
+      if (state.mode === "free") {
+        if (photo.free.h != null) photo.free.h *= value / photo.free.w;
+        photo.free.w = value;
+      } else photo.zoom = value;
+    }
   },
   renderPhotoControls,
 );
@@ -547,6 +649,119 @@ $("background-color").addEventListener("change", () => {
     remember(before);
   }
 });
+
+$("frame-photo").addEventListener("change", (event) =>
+  select(event.target.value || null, false),
+);
+for (const [axis, id] of [
+  ["w", "width"],
+  ["h", "height"],
+]) {
+  bindSlider(
+    `frame-${id}`,
+    (value) => {
+      const photo = selectedPhoto();
+      if (!photo) return;
+      if (state.mode === "grid")
+        resizeFrame(state, state.photos.indexOf(photo), axis, value / 100);
+      else {
+        const asset = assets.get(photo.id);
+        photo.free.h ??= (photo.free.w * asset.height) / asset.width;
+        photo.free[axis] = value / 100 / (axis === "h" ? state.ratio : 1);
+      }
+    },
+    () => {
+      renderFrameSize();
+      renderPhotoControls();
+      renderLayouts();
+    },
+  );
+}
+$("reset-frames").addEventListener("click", () =>
+  change(() => {
+    if (state.mode === "grid") state.frameLayout = null;
+    else if (selectedPhoto()) delete selectedPhoto().free.h;
+  }),
+);
+document.querySelectorAll("[data-pattern]").forEach((button) => {
+  button.addEventListener("click", () =>
+    change(() => {
+      state.backgroundPattern = button.dataset.pattern;
+      state.backgroundImage = null;
+    }),
+  );
+});
+$("remove-background").addEventListener("click", () =>
+  change(() => {
+    state.backgroundImage = null;
+  }),
+);
+$("choose-background").addEventListener("click", () =>
+  $("background-input").click(),
+);
+$("background-input").addEventListener("change", async (event) => {
+  const file = event.target.files[0];
+  if (!file || !ready || importing) return;
+  endGesture();
+  const before = snapshot();
+  importing = true;
+  renderUI();
+  $("draft-status").textContent = "背景を読み込み中…";
+  try {
+    const asset = await importImage(file);
+    const id = crypto.randomUUID();
+    assets.set(id, asset);
+    state.backgroundImage = id;
+    state.backgroundPattern = "none";
+    remember(before);
+    showToast("背景画像を変更しました");
+  } catch (error) {
+    showError(error.message);
+    $("draft-status").textContent = storageFailed ? "下書き未保存" : "";
+  } finally {
+    event.target.value = "";
+    importing = false;
+    renderUI();
+  }
+});
+$("watermark-enabled").addEventListener("change", (event) =>
+  change(() => {
+    state.watermark.enabled = event.target.checked;
+  }),
+);
+$("watermark-mode").addEventListener("change", (event) =>
+  change(() => {
+    state.watermark.mode = event.target.value;
+  }),
+);
+bindSlider(
+  "watermark-opacity",
+  (value) => {
+    state.watermark.opacity = value / 100;
+  },
+  renderFrame,
+);
+for (const [id, key] of [
+  ["watermark-text", "text"],
+  ["watermark-color", "color"],
+]) {
+  const input = $(id);
+  let before;
+  input.addEventListener("input", () => {
+    if (!ready || importing) return;
+    before ??= snapshot();
+    state.watermark[key] = input.value;
+    changed();
+  });
+  const commit = () => {
+    if (!before) return;
+    const previous = before;
+    before = null;
+    remember(previous);
+  };
+  input.addEventListener("change", commit);
+  input.addEventListener("blur", commit);
+}
 
 function editPhoto(action) {
   change(() => {
@@ -610,6 +825,7 @@ $("remove-photo").addEventListener("click", () =>
     const index = state.photos.findIndex((photo) => photo.id === selected);
     if (index < 0) return;
     state.photos.splice(index, 1);
+    state.frameLayout = null;
     selected =
       state.photos[Math.min(index, state.photos.length - 1)]?.id || null;
     state.layout = getLayout(state).id;
@@ -687,6 +903,8 @@ canvas.addEventListener("pointermove", (event) => {
     const factor = distance(points) / Math.max(1, distance(original));
     if (state.mode === "free") {
       photo.free.w = clamp(initial.free.w * factor, 0.08, 1.5);
+      if (initial.free.h != null)
+        photo.free.h = (initial.free.h * photo.free.w) / initial.free.w;
       const angle = (p) =>
         Math.atan2(
           (p[1].y - p[0].y) * canvas.clientHeight,
@@ -727,6 +945,7 @@ canvas.addEventListener("pointermove", (event) => {
       : 0;
   }
   renderPhotoControls();
+  renderFrameSize();
   requestDraw();
 });
 
@@ -887,6 +1106,7 @@ async function addFiles(files) {
       const id = crypto.randomUUID();
       assets.set(id, asset);
       state.photos.push(newPhoto(id, file.name));
+      state.frameLayout = null;
       if (state.mode === "free") arrangeFree(state, assets);
       selected = id;
     } catch (error) {
@@ -1062,7 +1282,8 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("beforeunload", (event) => {
   if (
     importing ||
-    (state.photos.length && (revision !== savedRevision || storageFailed))
+    ((state.photos.length || state.backgroundImage) &&
+      (revision !== savedRevision || storageFailed))
   ) {
     event.preventDefault();
     event.returnValue = "";
@@ -1090,10 +1311,10 @@ async function initialize() {
                 : stored.blob,
             ),
           );
-        if (draft.state.photos.some((photo) => !restored.has(photo.id)))
+        if (assetIds(draft.state).some((id) => !restored.has(id)))
           throw new Error("Missing image");
         assets = restored;
-        state = draft.state;
+        state = restoreState(draft.state);
         selected = null;
         if (state.photos.length) showToast("前回の続きから編集できます");
       } catch (error) {
