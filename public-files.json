@@ -1,6 +1,7 @@
 [
   "index.html",
   "assets/icon.svg",
+  "assets/apple-touch-icon.png",
   "src/bootstrap.js",
   "src/app.js",
   "src/layouts.js",

@@ -11,7 +11,7 @@ if (
   new Set(publicFiles).size !== publicFiles.length ||
   publicFiles.some(
     (path) =>
-      !/^(index\.html|assets\/icon\.svg|src\/[a-z-]+\.(js|css))$/.test(path),
+      !/^(index\.html|assets\/icon\.svg|assets\/apple-touch-icon\.png|src\/[a-z-]+\.(js|css))$/.test(path),
   )
 )
   throw new Error("Invalid public file allowlist");
