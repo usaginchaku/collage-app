@@ -1459,3 +1459,7 @@ input:disabled {
     }
   }
 }
+
+/* Line breaking: avoid stray last characters */
+body{line-break:strict;text-wrap-style:pretty}
+h1,h2,h3,h4,h5,h6,button,label,summary,legend,dt,th{text-wrap-style:balance}
